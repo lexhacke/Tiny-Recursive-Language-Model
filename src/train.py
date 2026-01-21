@@ -1,0 +1,87 @@
+from lightning.pytorch import LightningModule, Trainer
+import subprocess, os
+from torch.utils.data import DataLoader, Dataset
+from lightning.pytorch.loggers import TensorBoardLogger
+from datasets import load_dataset
+from transformers import AutoTokenizer
+from torch import nn
+import torch
+from .trm import TinyRecursiveLM
+from einops import rearrange
+
+class LLMLightning(LightningModule):
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+        self.slm = TinyRecursiveLM(config) #TransformerBaseline(config)
+        self.lr = config['lr']
+        self.CE = nn.CrossEntropyLoss(ignore_index=config['pad_idx'], reduction='mean')
+
+    def forward(self, batch):
+        out = self.slm(batch['input_ids'], batch['attention_mask'])
+        if isinstance(out, tuple):
+            out = out[0]
+        return out
+
+    def training_step(self, batch, batch_idx):
+        logits = self(batch)
+        shifted_logits = logits[..., :-1, :].contiguous()
+        shifted_labels = batch['input_ids'][..., 1:].contiguous()
+
+        shifted_logits = rearrange(shifted_logits, "B N D -> (B N) D")
+        shifted_labels = rearrange(shifted_labels, "B N -> (B N)")
+
+        if torch.isnan(logits).any() or torch.isinf(logits).any():
+            print("Failure on batch", batch_idx)
+            raise RuntimeError("logits contain NaN/Inf")
+
+        loss = self.CE(shifted_logits, shifted_labels)
+
+        self.log("CCE", loss.detach(), on_step=True, on_epoch=True, prog_bar=True)
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.AdamW(
+            self.parameters(),
+            lr=self.lr,
+            betas=(0.9, 0.95), # Standard LLM betas
+            weight_decay=0.1
+        )
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=1000)
+        return [optimizer], [scheduler]
+
+if __name__ == "__main__":
+    import time, json
+    from src.dataset import create_dataset
+
+    logger = TensorBoardLogger("trm_logs", name="slm")
+    tb_process = subprocess.Popen(['tensorboard', '--logdir', 'trm_logs', '--port', '6006'])
+    time.sleep(10)
+    try:
+        print("Launching window")
+        config = json.load(open("src/config/config.json", "r"))
+        cuda_config = {x:config[x] for x in config}
+        cuda_config['device'] = 'cuda'
+
+        trm_lightning = LLMLightning(cuda_config).to('cuda')
+        ds = create_dataset(cuda_config['context'], cuda_config['tokenizer'])
+        dl = DataLoader(
+            ds,
+            batch_size=16,
+            pin_memory=True,
+            persistent_workers=True,
+            num_workers=8
+        )
+        trainer = Trainer(
+            max_epochs=1,
+            accelerator="gpu",
+            devices=1,
+            log_every_n_steps=5,
+            logger=logger
+        )
+
+        trainer.fit(trm_lightning, dl)
+    finally:
+        tb_process.terminate()
+        trainer.slm.save_state_dict('trm-42M-384d.pt')
+        print("Terminated Tensorboard Process")

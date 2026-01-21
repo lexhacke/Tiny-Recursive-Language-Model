@@ -1,0 +1,6 @@
+torch
+lightning
+transformers
+datasets
+einops
+tensorboard
