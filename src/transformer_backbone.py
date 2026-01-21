@@ -1,8 +1,8 @@
 from torch import nn
 import torch
 import torch.nn.functional as F
-from .rope import generate_angles_1d, apply_angles_1d
-from .utils import RMSNorm
+from rope import generate_angles_1d, apply_angles_1d
+from utils import RMSNorm
 from einops import rearrange
 
 class TransformerBackbone(nn.Module):

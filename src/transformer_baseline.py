@@ -1,7 +1,7 @@
 from torch import nn
 import torch
-from .utils import RMSNorm
-from .transformer_backbone import TransformerBackbone
+from utils import RMSNorm
+from transformer_backbone import TransformerBackbone
 import json
 
 class TransformerBaseline(nn.Module):

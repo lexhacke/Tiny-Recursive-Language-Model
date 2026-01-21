@@ -1,8 +1,8 @@
 from torch import nn
 import torch
-from .utils import RMSNorm
-from .transformer_backbone import TransformerBackbone
-from .utils import trunc_normal_
+from utils import RMSNorm
+from transformer_backbone import TransformerBackbone
+from utils import trunc_normal_
 import json
 
 class TinyRecursiveLM(nn.Module):

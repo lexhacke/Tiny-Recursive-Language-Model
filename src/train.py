@@ -1,9 +1,7 @@
 from lightning.pytorch import LightningModule, Trainer
 import subprocess, os
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 from lightning.pytorch.loggers import TensorBoardLogger
-from datasets import load_dataset
-from transformers import AutoTokenizer
 from torch import nn
 import torch
 from trm import TinyRecursiveLM
