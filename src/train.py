@@ -6,7 +6,7 @@ from datasets import load_dataset
 from transformers import AutoTokenizer
 from torch import nn
 import torch
-from .trm import TinyRecursiveLM
+from trm import TinyRecursiveLM
 from einops import rearrange
 
 class LLMLightning(LightningModule):
