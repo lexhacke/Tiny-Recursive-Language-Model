@@ -9,7 +9,7 @@
     "residual_alpha": 0,
     "learnable_alpha": true,
     "attention": false,
-    "depth": 2,
+    "depth": 4,
     "device": "cpu",
     "tokenizer": "microsoft/phi-1",
     "n": 2,

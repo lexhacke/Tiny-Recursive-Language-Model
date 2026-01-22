@@ -68,7 +68,7 @@ def train_llm(ngrok_key, config_name='config.json', colab=True):
         ds = create_dataset(cuda_config['context'], cuda_config['tokenizer'])
         dl = DataLoader(
             ds,
-            batch_size=16,
+            batch_size=64,
             pin_memory=True,
             persistent_workers=True,
             num_workers=8

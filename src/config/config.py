@@ -12,11 +12,11 @@ config = {
     "residual_alpha":0,
     'learnable_alpha':True,
     'attention':False,
-    'depth':2,
+    'depth':4,
     'device':'cpu',
     'tokenizer': 'microsoft/phi-1',
     'n': 2,
-    'T': 2,
+    'T': 2
 }
 
 tok = AutoTokenizer.from_pretrained(config['tokenizer'])
