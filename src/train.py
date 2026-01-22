@@ -50,15 +50,19 @@ class LLMLightning(LightningModule):
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=1000)
         return [optimizer], [scheduler]
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 def train_llm(ngrok_key, config_name='config.json', colab=True):
     logger = TensorBoardLogger("trm_logs", name="slm")
     tb_process = subprocess.Popen(['tensorboard', '--logdir', 'trm_logs', '--port', '6006'])
     url = None
+    trainer = None
     try:
         ngrok.set_auth_token(ngrok_key)
         url = ngrok.connect(6006)
         print("Tensorboard URL:", url)
-        config = json.load(open("config/"+config_name, "r"))
+        config_path = os.path.join(SCRIPT_DIR, "config", config_name)
+        config = json.load(open(config_path, "r"))
         cuda_config = {x:config[x] for x in config}
         cuda_config['device'] = 'cuda'
 
@@ -81,7 +85,9 @@ def train_llm(ngrok_key, config_name='config.json', colab=True):
 
         trainer.fit(trm_lightning, dl)
     finally:
-        ngrok.disconnect(url)
+        if url:
+            ngrok.disconnect(url)
         tb_process.terminate()
-        trainer.slm.save_state_dict('trm-42M-384d.pt')
+        if trainer:
+            trainer.model.slm.save_state_dict('trm-42M-384d.pt')
         print("Terminated Tensorboard Process")
