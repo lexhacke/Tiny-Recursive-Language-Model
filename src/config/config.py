@@ -11,12 +11,16 @@ config = {
     "n_heads":8,
     "residual_alpha":0,
     'learnable_alpha':True,
-    'attention':False,
     'depth':4,
     'device':'cpu',
     'tokenizer': 'microsoft/phi-1',
-    'n': 2,
-    'T': 2
+    'n': 3,
+    'T': 6,
+    'weight_tying': False,
+    'clip_graph': True,
+    'threshold': 0.5,
+    'exit_early': True,
+    'mask_tokens': True
 }
 
 tok = AutoTokenizer.from_pretrained(config['tokenizer'])
@@ -27,4 +31,4 @@ print(eos, pad)
 assert pad == config['pad_idx'] or eos == config['pad_idx'], f"{pad} {eos} not {config['pad_idx']}"
 assert config['vocab_size'] == len(tok), f"{config['vocab_size']} != {len(tok)}"
 
-json.dump(config, open("src/config/config.json", "w"), indent=4)
+json.dump(config, open("config/config.json", "w"), indent=4)

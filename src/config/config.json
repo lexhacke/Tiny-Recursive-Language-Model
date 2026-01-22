@@ -8,10 +8,14 @@
     "n_heads": 8,
     "residual_alpha": 0,
     "learnable_alpha": true,
-    "attention": false,
     "depth": 4,
     "device": "cpu",
     "tokenizer": "microsoft/phi-1",
-    "n": 2,
-    "T": 2
+    "n": 3,
+    "T": 6,
+    "weight_tying": false,
+    "clip_graph": true,
+    "threshold": 0.5,
+    "exit_early": true,
+    "mask_tokens": true
 }

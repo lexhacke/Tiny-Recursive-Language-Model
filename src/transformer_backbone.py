@@ -43,22 +43,6 @@ class Attention(nn.Module):
         self.proj = nn.Linear(emb_dim, emb_dim, bias=False)
         self.register_buffer("freq", generate_angles_1d(context_length, head_dim), persistent=False)
 
-    def build_attn_mask(self, attn_mask):
-        """
-        attn_mask = torch.Tensor of shape B, N
-
-        Returns a non-causal attention mask of shape B, N, N
-        """
-        padding_mask = attn_mask.unsqueeze(-1)
-        padding_maskT = rearrange(padding_mask, "B N S -> B S N")
-        padding_mask = (padding_mask @ padding_maskT)
-        padding_mask = padding_mask > 0
-
-        causal_mask = torch.tril(padding_mask, 0) == 1
-
-        attn_mask = causal_mask * padding_mask
-        return attn_mask[:, None, :, :]
-
     def forward(self, x, attn_mask):
         """
         x = torch.Tensor of shape B, N, D
@@ -72,7 +56,7 @@ class Attention(nn.Module):
 
         q = apply_angles_1d(q, self.freq)
         k = apply_angles_1d(k, self.freq)
-        x = F.scaled_dot_product_attention(q, k, v, attn_mask=(~attn_mask.bool())[:, None, None, :], is_causal=True)
+        x = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask)
         x = rearrange(x, "B h N D -> B N (h D)")
         x = self.proj(x)
         return x
