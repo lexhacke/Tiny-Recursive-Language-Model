@@ -50,14 +50,7 @@ class LLMLightning(LightningModule):
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=1000)
         return [optimizer], [scheduler]
 
-def train_llm(config_name='config.json', colab=True):
-    if colab:
-        from google.colab import userdata
-        ngrok_key = userdata.get("NGROK_KEY")
-    else:
-        from dotenv import load_dotenv
-        load_dotenv()
-        ngrok_key = os.getenv("NGROK_KEY")
+def train_llm(ngrok_key, config_name='config.json', colab=True):
     logger = TensorBoardLogger("trm_logs", name="slm")
     tb_process = subprocess.Popen(['tensorboard', '--logdir', 'trm_logs', '--port', '6006'])
     try:
