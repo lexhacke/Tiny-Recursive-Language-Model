@@ -53,7 +53,7 @@ class LLMLightning(LightningModule):
         return [optimizer], [scheduler]
 
 def train_llm(model, ngrok_key, config_name='config.json', colab=True):
-    assert model in {'trm', 'baseline'}, "Model must be 'trm' or 'transformer'"
+    assert model in {'trm', 'baseline'}, "Model must be 'trm' or 'baseline'"
     log_dir = "/content/Tiny-Recursive-Language-Model/src/trm_logs"
     logger = TensorBoardLogger(log_dir, name="slm")
     tb_process = subprocess.Popen(['tensorboard', '--logdir', log_dir, '--port', '6006'])
