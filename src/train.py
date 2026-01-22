@@ -6,7 +6,7 @@ from torch import nn
 from trm import TinyRecursiveLM
 from einops import rearrange
 import torch, os, json
-from src.dataset import create_dataset
+from dataset import create_dataset
 from dotenv import load_dotenv
 from pyngrok import ngrok
 
