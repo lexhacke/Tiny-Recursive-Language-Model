@@ -4,3 +4,4 @@ transformers
 datasets
 einops
 tensorboard
+pyngrok

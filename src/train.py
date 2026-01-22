@@ -3,9 +3,14 @@ import subprocess, os
 from torch.utils.data import DataLoader
 from lightning.pytorch.loggers import TensorBoardLogger
 from torch import nn
-import torch
 from trm import TinyRecursiveLM
 from einops import rearrange
+import torch, os, json
+from src.dataset import create_dataset
+from dotenv import load_dotenv
+from pyngrok import ngrok
+
+load_dotenv()
 
 class LLMLightning(LightningModule):
     def __init__(self, config):
@@ -48,16 +53,13 @@ class LLMLightning(LightningModule):
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=1000)
         return [optimizer], [scheduler]
 
-if __name__ == "__main__":
-    import time, json
-    from src.dataset import create_dataset
-
+def train(config_name='config.json'):
     logger = TensorBoardLogger("trm_logs", name="slm")
     tb_process = subprocess.Popen(['tensorboard', '--logdir', 'trm_logs', '--port', '6006'])
-    time.sleep(10)
     try:
-        print("Launching window")
-        config = json.load(open("src/config/config.json", "r"))
+        url = ngrok.connect(6006)
+        print("Tensorboard URL:", url)
+        config = json.load(open("src/config/"+config_name, "r"))
         cuda_config = {x:config[x] for x in config}
         cuda_config['device'] = 'cuda'
 
@@ -80,6 +82,7 @@ if __name__ == "__main__":
 
         trainer.fit(trm_lightning, dl)
     finally:
+        ngrok.disconnect(url)
         tb_process.terminate()
         trainer.slm.save_state_dict('trm-42M-384d.pt')
         print("Terminated Tensorboard Process")
