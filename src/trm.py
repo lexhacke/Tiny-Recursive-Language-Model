@@ -72,7 +72,7 @@ class TinyRecursiveLM(nn.Module):
                 y = y.detach()
                 z = z.detach()
 
-        return preds, conf
+        return preds, conf, mask
     
     def forward(self, x, mask, y=None, z=None):
         """
@@ -96,11 +96,12 @@ class TinyRecursiveLM(nn.Module):
                                  lower=-2,
                                  device=self.device).chunk(2, dim=0)
             y, z = y[0], z[0]
-        preds, conf = self.outer(x, y, z, mask)
-        return preds, conf
+        preds, conf, mask = self.outer(x, y, z, mask)
+        return preds, conf, mask
 
 if __name__ == "__main__":
     from transformers import AutoTokenizer
+    import matplotlib.pyplot as plt
 
     config = json.load(open("config/config.json", "r"))
 
@@ -122,10 +123,23 @@ if __name__ == "__main__":
     params = sum([p.numel() for p in slm.parameters() if p.requires_grad])
     print(f"TinyRecursiveLM Baseline Parameter Count: {params / 1_000_000:.4}M")
     print(f"Params without lm_head and embedding: {(params - 2 * config['dim'] * config['vocab_size']) / 1_000_000:.4}M")
-    pred, conf = slm(batch['input_ids'], batch['attention_mask'])
+
+    pred, conf, mask = slm(batch['input_ids'], batch['attention_mask'])
+    plt.imshow(mask[0, 0].detach().cpu().numpy(), cmap='gray')
+
     conf, pred = torch.stack(conf), torch.stack(pred)
     print(f"Pred shape: {pred.shape}, Conf shape: {conf.shape}")
-    gt = torch.ones_like(batch['input_ids']) + 50
-    pred_ids = pred.argmax(dim=-1)
-    conf_gt = (pred_ids == gt).float().unsqueeze(-1) 
-    print("Confidence Cross Entropy Loss:", F.binary_cross_entropy_with_logits(conf, conf_gt))
+
+    pred_ids = pred.argmax(dim=-1) # Fake token targets
+    conf_gt = (pred_ids == batch['input_ids']).float() # Fake confidence targets
+
+    conf_gt = rearrange(conf_gt, "... N -> (...) N")
+    conf = rearrange(conf.squeeze(-1), "... N -> (...) N")
+
+    CE = nn.CrossEntropyLoss(ignore_index=config['pad_idx'], reduction='mean')
+    BCE = nn.BCEWithLogitsLoss(reduction='mean')
+    target = batch['input_ids'].expand(pred.shape[0], -1, -1)
+    target = rearrange(target, "... -> (...)")
+    pred = rearrange(pred, "... D -> (...) D")
+    print("Confidence Cross Entropy Loss:", BCE(conf, conf_gt))
+    print("Prediction Cross Entropy Loss:", CE(pred, target))
