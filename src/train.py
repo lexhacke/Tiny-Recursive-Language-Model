@@ -4,16 +4,17 @@ from torch.utils.data import DataLoader
 from lightning.pytorch.loggers import TensorBoardLogger
 from torch import nn
 from trm import TinyRecursiveLM
+from transformer_baseline import TransformerBaseline
 from einops import rearrange
 import torch, os, json
 from dataset import create_dataset
 from pyngrok import ngrok
 
 class LLMLightning(LightningModule):
-    def __init__(self, config):
+    def __init__(self, recursive, config):
         super().__init__()
         self.config = config
-        self.slm = TinyRecursiveLM(config) #TransformerBaseline(config)
+        self.slm = TinyRecursiveLM(config) if recursive else TransformerBaseline(config)
         self.lr = config['lr']
         self.save_hyperparameters()
         self.CE = nn.CrossEntropyLoss(ignore_index=config['pad_idx'], reduction='mean')
@@ -51,7 +52,8 @@ class LLMLightning(LightningModule):
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=1000)
         return [optimizer], [scheduler]
 
-def train_llm(ngrok_key, config_name='config.json', colab=True):
+def train_llm(model, ngrok_key, config_name='config.json', colab=True):
+    assert model in {'trm', 'baseline'}, "Model must be 'trm' or 'transformer'"
     log_dir = "/content/Tiny-Recursive-Language-Model/src/trm_logs"
     logger = TensorBoardLogger(log_dir, name="slm")
     tb_process = subprocess.Popen(['tensorboard', '--logdir', log_dir, '--port', '6006'])
@@ -65,7 +67,7 @@ def train_llm(ngrok_key, config_name='config.json', colab=True):
         cuda_config = {x:config[x] for x in config}
         cuda_config['device'] = 'cuda'
 
-        trm_lightning = LLMLightning(cuda_config).to('cuda')
+        trm_lightning = LLMLightning(recursive=(model == 'trm'), config=cuda_config).to('cuda')
         ds = create_dataset(cuda_config['context'], cuda_config['tokenizer'])
         dl = DataLoader(
             ds,
