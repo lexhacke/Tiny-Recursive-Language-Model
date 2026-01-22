@@ -7,10 +7,7 @@ from trm import TinyRecursiveLM
 from einops import rearrange
 import torch, os, json
 from dataset import create_dataset
-from dotenv import load_dotenv
 from pyngrok import ngrok
-
-load_dotenv()
 
 class LLMLightning(LightningModule):
     def __init__(self, config):
@@ -53,11 +50,18 @@ class LLMLightning(LightningModule):
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=1000)
         return [optimizer], [scheduler]
 
-def train_llm(config_name='config.json'):
+def train_llm(config_name='config.json', colab=True):
+    if colab:
+        from google.colab import userdata
+        ngrok_key = userdata.get("NGROK_KEY")
+    else:
+        from dotenv import load_dotenv
+        load_dotenv()
+        ngrok_key = os.getenv("NGROK_KEY")
     logger = TensorBoardLogger("trm_logs", name="slm")
     tb_process = subprocess.Popen(['tensorboard', '--logdir', 'trm_logs', '--port', '6006'])
     try:
-        ngrok.set_auth_token(os.getenv("NGROK_KEY"))
+        ngrok.set_auth_token(ngrok_key)
         url = ngrok.connect(6006)
         print("Tensorboard URL:", url)
         config = json.load(open("src/config/"+config_name, "r"))
