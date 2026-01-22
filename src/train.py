@@ -1,5 +1,5 @@
 from lightning.pytorch import LightningModule, Trainer
-import subprocess, os
+import subprocess
 from torch.utils.data import DataLoader
 from lightning.pytorch.loggers import TensorBoardLogger
 from torch import nn
@@ -57,6 +57,7 @@ def train_llm(config_name='config.json'):
     logger = TensorBoardLogger("trm_logs", name="slm")
     tb_process = subprocess.Popen(['tensorboard', '--logdir', 'trm_logs', '--port', '6006'])
     try:
+        ngrok.set_auth_token(os.getenv("NGROK_KEY"))
         url = ngrok.connect(6006)
         print("Tensorboard URL:", url)
         config = json.load(open("src/config/"+config_name, "r"))
