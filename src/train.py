@@ -53,8 +53,9 @@ class LLMLightning(LightningModule):
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def train_llm(ngrok_key, config_name='config.json', colab=True):
-    logger = TensorBoardLogger("trm_logs", name="slm")
-    tb_process = subprocess.Popen(['tensorboard', '--logdir', 'trm_logs', '--port', '6006'])
+    log_dir = os.path.join(SCRIPT_DIR, "trm_logs")
+    logger = TensorBoardLogger(log_dir, name="slm")
+    tb_process = subprocess.Popen(['tensorboard', '--logdir', log_dir, '--port', '6006'])
     url = None
     trainer = None
     try:
@@ -89,5 +90,5 @@ def train_llm(ngrok_key, config_name='config.json', colab=True):
             ngrok.disconnect(url)
         tb_process.terminate()
         if trainer:
-            trainer.model.slm.save_state_dict('trm-42M-384d.pt')
+            torch.save(trainer.model.slm.state_dict(), os.path.join(SCRIPT_DIR, 'trm-42M-384d.pt'))
         print("Terminated Tensorboard Process")
