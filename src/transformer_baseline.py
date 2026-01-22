@@ -39,7 +39,7 @@ class TransformerBaseline(nn.Module):
 if __name__ == "__main__":
     from transformers import AutoTokenizer
 
-    config = json.load(open("src/config/config.json", "r"))
+    config = json.load(open("config/config.json", "r"))
 
     tokenizer = AutoTokenizer.from_pretrained(config['tokenizer'])
     if tokenizer.pad_token is None:

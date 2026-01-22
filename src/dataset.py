@@ -33,8 +33,8 @@ if __name__ == "__main__":
     import json
     from src.trm import TinyRecursiveLM
     from einops import rearrange
-    
-    config = json.load(open("src/config/config.json", "r"))
+
+    config = json.load(open("config/config.json", "r"))
 
     cuda_config = {x:config[x] for x in config}
     cuda_config['device'] = 'cuda'

@@ -57,7 +57,7 @@ def train_llm(ngrok_key, config_name='config.json', colab=True):
         ngrok.set_auth_token(ngrok_key)
         url = ngrok.connect(6006)
         print("Tensorboard URL:", url)
-        config = json.load(open("/config/"+config_name, "r"))
+        config = json.load(open("config/"+config_name, "r"))
         cuda_config = {x:config[x] for x in config}
         cuda_config['device'] = 'cuda'
 
