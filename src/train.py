@@ -15,6 +15,7 @@ class LLMLightning(LightningModule):
         self.config = config
         self.slm = TinyRecursiveLM(config) #TransformerBaseline(config)
         self.lr = config['lr']
+        self.save_hyperparameters()
         self.CE = nn.CrossEntropyLoss(ignore_index=config['pad_idx'], reduction='mean')
 
     def forward(self, batch):
