@@ -28,7 +28,7 @@ class TinyRecursiveLM(nn.Module):
         self.embedding = nn.Embedding(config['vocab_size'], config['dim'])
         self.backbone = TransformerBackbone(config)
         self.lm_head = nn.Linear(config['dim'], config['vocab_size'], bias=False)
-        self.embedding.weight = nn.Parameter(torch.randn_like(self.embedding.weight.T) / self.dim**0.5)
+        self.embedding.weight = nn.Parameter(torch.randn_like(self.embedding.weight) / self.dim**0.5)
         self.lm_head.weight = self.embedding.weight # weight tying
         self.norm = RMSNorm(config['dim'])
         self.device = config['device']
