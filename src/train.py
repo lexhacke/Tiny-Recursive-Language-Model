@@ -50,10 +50,8 @@ class LLMLightning(LightningModule):
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=1000)
         return [optimizer], [scheduler]
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-
 def train_llm(ngrok_key, config_name='config.json', colab=True):
-    log_dir = os.path.join(SCRIPT_DIR, "trm_logs")
+    log_dir = "/content/Tiny-Recursive-Language-Model/src/trm_logs"
     logger = TensorBoardLogger(log_dir, name="slm")
     tb_process = subprocess.Popen(['tensorboard', '--logdir', log_dir, '--port', '6006'])
     url = None
@@ -62,8 +60,7 @@ def train_llm(ngrok_key, config_name='config.json', colab=True):
         ngrok.set_auth_token(ngrok_key)
         url = ngrok.connect(6006)
         print("Tensorboard URL:", url)
-        config_path = os.path.join(SCRIPT_DIR, "config", config_name)
-        config = json.load(open(config_path, "r"))
+        config = json.load(open("/content/Tiny-Recursive-Language-Model/src/config/"+config_name, "r"))
         cuda_config = {x:config[x] for x in config}
         cuda_config['device'] = 'cuda'
 
@@ -90,5 +87,5 @@ def train_llm(ngrok_key, config_name='config.json', colab=True):
             ngrok.disconnect(url)
         tb_process.terminate()
         if trainer:
-            torch.save(trainer.model.slm.state_dict(), os.path.join(SCRIPT_DIR, 'trm-42M-384d.pt'))
+            torch.save(trainer.model.slm.state_dict(), os.path.join("/content/Tiny-Recursive-Language-Model/src/", 'trm-42M-384d.pt'))
         print("Terminated Tensorboard Process")
