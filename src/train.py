@@ -53,6 +53,7 @@ class LLMLightning(LightningModule):
 def train_llm(ngrok_key, config_name='config.json', colab=True):
     logger = TensorBoardLogger("trm_logs", name="slm")
     tb_process = subprocess.Popen(['tensorboard', '--logdir', 'trm_logs', '--port', '6006'])
+    url = None
     try:
         ngrok.set_auth_token(ngrok_key)
         url = ngrok.connect(6006)
