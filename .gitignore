@@ -1,3 +1,12 @@
 src/notebook.ipynb
-.env
+src/.env
 __pycache__
+src/.claude
+src/venv
+src/trm_logs
+.venv/
+venv/
+*.pt
+*.pth
+trm_logs/
+.env

@@ -83,10 +83,10 @@ class TinyRecursiveLM(nn.Module):
         conf = list[T, B, context, 1]
         """
         B, _ = x.shape
-        mask = mask[:, None, :, None]
+        mask = mask[:, None, :, None].float()
         maskT = rearrange(mask, "B h N S -> B h S N")
         mask = mask @ maskT
-        mask = torch.tril(mask).float()
+        mask = torch.tril(mask)
         x = self.embedding(x)
         if y is None and z is None:
             y, z = trunc_normal_((2, B, self.context, self.dim),
@@ -112,7 +112,7 @@ if __name__ == "__main__":
     tokenizer.truncation_side = 'right'
     
     batch = tokenizer(["This is an example forward pass. I hope it works man.",
-                       "Example 2. Short af."],
+                      "Example 2. Short af."],
                       padding='max_length',
                       truncation=True,
                       max_length=config['context'],

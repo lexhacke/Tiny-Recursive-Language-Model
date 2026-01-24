@@ -1,5 +1,5 @@
 {
-    "norm_type": "postnorm",
+    "norm_type": "prenorm",
     "pad_idx": 50256,
     "lr": 0.0001,
     "dim": 384,
@@ -9,7 +9,7 @@
     "residual_alpha": 0,
     "learnable_alpha": true,
     "depth": 4,
-    "device": "cpu",
+    "device": "cuda",
     "tokenizer": "microsoft/phi-1",
     "n": 3,
     "T": 6,

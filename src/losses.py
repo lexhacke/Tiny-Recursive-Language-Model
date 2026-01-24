@@ -40,7 +40,7 @@ if __name__ == "__main__":
 
     config = json.load(open("config/config.json", "r"))
 
-    slm = TinyRecursiveLM(config)
+    slm = TinyRecursiveLM(config).to(config['device'])
     tok = AutoTokenizer.from_pretrained(config['tokenizer'])
     
     if tok.pad_token is None:
@@ -58,7 +58,7 @@ if __name__ == "__main__":
                       return_tensors='pt'
                   )
     
-    pred, conf, _ = slm(batch['input_ids'], batch['attention_mask'])
+    pred, conf, _ = slm(batch['input_ids'].to(config['device']), batch['attention_mask'].to(config['device']))
     pred, conf = torch.stack(pred), torch.stack(conf)
-    bce_loss, ce_loss = loss_module(pred, conf, batch['input_ids'])
+    bce_loss, ce_loss = loss_module(pred, conf, batch['input_ids'].to(config['device']))
     print(f"BCE Loss: {bce_loss.item()}, CE Loss: {ce_loss.item()}")
