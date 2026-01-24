@@ -1,2 +1,3 @@
 src/notebook.ipynb
 .env
+__pycache__
