@@ -53,7 +53,7 @@ class LLMLightning(LightningModule):
             self.parameters(),
             lr=self.lr,
             betas=(0.9, 0.95), # Standard LLM betas
-            weight_decay=0.1
+            weight_decay=0.1 if not self.nGPT else 0.0 # No weight decay for nGPTs
         )
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=1000)
         return [optimizer], [scheduler]
