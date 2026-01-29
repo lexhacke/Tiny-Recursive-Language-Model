@@ -95,6 +95,7 @@ class TinyRecursiveLM(nn.Module):
         conf = list[T, B, context, 1]
         """
         B, _ = x.shape
+        device = x.device
         mask = mask[:, None, :, None].float()
         maskT = rearrange(mask, "B h N S -> B h S N")
         mask = mask @ maskT
@@ -107,7 +108,7 @@ class TinyRecursiveLM(nn.Module):
                                  std=(1/self.context)**0.5,
                                  upper=2,
                                  lower=-2,
-                                 device=self.device).chunk(2, dim=0)
+                                 device=device).chunk(2, dim=0)
             y, z = y[0], z[0]
         preds, conf, mask = self.outer(x, y, z, mask)
         return preds, conf, mask
