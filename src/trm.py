@@ -23,6 +23,7 @@ class TinyRecursiveLM(nn.Module):
         'context': int
         """
         super().__init__()
+        self.norm_type = config['norm_type']
         self.n = config['n']
         self.T = config['T']
         self.dim = config['dim']
@@ -42,6 +43,16 @@ class TinyRecursiveLM(nn.Module):
 
         self.conf_head = nn.Linear(config['dim'], 1, bias=False)
         self.norm = RMSNorm(config['dim'])
+
+        if self.norm_type == 'nGPT':
+            self.linears = [self.embedding.weight, self.lm_head.weight, self.conf_head.weight]
+            for block in self.backbone.blocks:
+                self.linears += [block.attn.qkv.weight, 
+                                 block.attn.proj.weight, 
+                                 block.mlp.linearIn.weight, 
+                                 block.mlp.linearOut.weight, 
+                                 block.mlp.gate.weight]
+
         self.device = config['device']
 
     def inner(self, x, y, z, mask):
@@ -55,7 +66,8 @@ class TinyRecursiveLM(nn.Module):
         conf_mask = torch.ones_like(y[:, :, 0:1]) # Shape B, context, 1
         for _ in range(self.T):
             y_next, z_next = self.inner(x, y, z, mask)
-            y, z = y_next * conf_mask + y * (1 - conf_mask), z_next * conf_mask + z * (1 - conf_mask)
+            y = y_next * conf_mask + y * (1 - conf_mask)
+            z = z_next * conf_mask + z * (1 - conf_mask)
             y_norm = self.norm(y)
             preds.append(self.lm_head(y_norm))
             conf.append(self.conf_head(y_norm))
@@ -63,9 +75,9 @@ class TinyRecursiveLM(nn.Module):
 
             if self.mask_tokens:
                 conf_mask = conf_mask * (proba < self.threshold).float() # shape B, context, 1
-                mask = conf_mask[:, None, :, :] * mask # mask queries of confident predictions
+                mask = mask | (conf_mask[:, None, :, :] == 0) # mask queries of confident predictions
 
-            if mask.sum() == 0 and self.exit_early:
+            if mask.all() and self.exit_early:
                 break
 
             if self.clip_graph:
@@ -87,6 +99,7 @@ class TinyRecursiveLM(nn.Module):
         maskT = rearrange(mask, "B h N S -> B h S N")
         mask = mask @ maskT
         mask = torch.tril(mask)
+        mask = mask != 1
         x = self.embedding(x)
         if y is None and z is None:
             y, z = trunc_normal_((2, B, self.context, self.dim),
@@ -126,6 +139,7 @@ if __name__ == "__main__":
 
     pred, conf, mask = slm(batch['input_ids'], batch['attention_mask'])
     plt.imshow(mask[0, 0].detach().cpu().numpy(), cmap='gray')
+    plt.show()
 
     conf, pred = torch.stack(conf), torch.stack(pred)
     print(f"Pred shape: {pred.shape}, Conf shape: {conf.shape}")

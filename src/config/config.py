@@ -2,7 +2,7 @@ from transformers import AutoTokenizer
 import json
 
 config = {  
-    'norm_type': 'postnorm',
+    'norm_type': 'nGPT',
     "pad_idx":50256,
     "lr":1e-4,
     "dim":384,
@@ -19,8 +19,8 @@ config = {
     'weight_tying': False,
     'clip_graph': True,
     'threshold': 0.5,
-    'exit_early': True,
-    'mask_tokens': True
+    'exit_early': False,
+    'mask_tokens': False
 }
 
 tok = AutoTokenizer.from_pretrained(config['tokenizer'])

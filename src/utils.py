@@ -2,9 +2,9 @@ import torch
 from torch import nn
 
 class RMSNorm(nn.Module):
-    def __init__(self, dim):
+    def __init__(self, dim, gated=True):
         super().__init__()
-        self.gate = nn.Parameter(torch.ones(1, dim))
+        self.gate = nn.Parameter(torch.ones(1, dim)) if gated else 1.0
 
     def forward(self, x, eps=1e-4):
         """
@@ -30,4 +30,4 @@ def trunc_normal_(shape, mean=0, std=1, upper=2, lower=-2, device="cpu"):
 
 if __name__ == "__main__":
     x = torch.randn(16,4,4)
-    print(RMSNorm(4)(x))
+    print(RMSNorm(4, gated=False)(x))
