@@ -12,7 +12,8 @@ class TransformerBackbone(nn.Module):
         self.norm_map = {
             'prenorm': 1,
             'postnorm': 2,
-            'nGPT': 3
+            'nGPT': 3,
+            'ortho': 4
         }
         self.norm_type = self.norm_map[config['norm_type']]
 
@@ -62,6 +63,10 @@ class TransformerBackbone(nn.Module):
                 x_norm = F.normalize(x, p=2, dim=-1)
                 h_mlp_norm = F.normalize(h_mlp, p=2, dim=-1)
                 x = F.normalize(x_norm + lr * (h_mlp_norm - x_norm), p=2, dim=-1)
+        
+        elif self.norm_type == self.norm_map['ortho']:
+            pass
+        
         return x
 
 class Attention(nn.Module):

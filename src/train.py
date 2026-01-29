@@ -15,6 +15,7 @@ from einops import rearrange
 import torch, os, json
 from dataset import create_dataset
 from pyngrok import ngrok
+import torch.nn.functional as F
 
 import torch
 torch.set_float32_matmul_precision("high")
@@ -25,8 +26,16 @@ class LLMLightning(LightningModule):
         self.config = config
         self.slm = TinyRecursiveLM(config) if recursive else TransformerBaseline(config)
         self.lr = config['lr']
+        self.nGPT = (config['norm_type'] == 'nGPT')
+
         self.save_hyperparameters()
         self.loss = LossModule(config)
+    
+    def on_before_zero_grad(self, optimizer):
+        if self.nGPT:
+            with torch.no_grad():
+                for linear in self.slm.linears:
+                    linear.data.copy_(F.normalize(linear, p=2, dim=-1))
 
     def forward(self, batch):
         return self.slm(batch['input_ids'], batch['attention_mask'])
@@ -57,7 +66,7 @@ def train_llm(model, ngrok_key, config_name='config.json', launch_subprocesses=T
     url = None
     trainer = None
     success = False
-    
+
     if launch_subprocesses:
         tb_process = subprocess.Popen(['tensorboard', '--logdir', log_dir, '--port', '6006'])
         ngrok.set_auth_token(ngrok_key)
@@ -94,10 +103,12 @@ def train_llm(model, ngrok_key, config_name='config.json', launch_subprocesses=T
         trainer.fit(trm_lightning, dl)
         success = True
         print("Training completed successfully!")
+
     except Exception as e:
         print(f"ERROR DURING TRAINING: {e}")
         import traceback
         traceback.print_exc()
+
     finally:
         if url:
             ngrok.disconnect(url)
