@@ -98,8 +98,8 @@ class TinyRecursiveLM(nn.Module):
         mask = mask[:, None, :, None].float()
         maskT = rearrange(mask, "B h N S -> B h S N")
         mask = mask @ maskT
-        mask = torch.triu(mask)
-        mask = mask == 1
+        mask = torch.tril(mask)
+        mask = (mask != 1).bool()
         x = self.embedding(x)
         if y is None and z is None:
             y, z = trunc_normal_((2, B, self.context, self.dim),
