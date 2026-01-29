@@ -1,3 +1,8 @@
+"""
+TODO:
+- Training loop + Linear weight L2 constraint implementation for nGPT
+"""
+
 from lightning.pytorch import LightningModule, Trainer
 import subprocess
 from torch.utils.data import DataLoader
@@ -49,14 +54,15 @@ def train_llm(model, ngrok_key, config_name='config.json', launch_subprocesses=T
     log_dir = "trm_logs"
     logger = TensorBoardLogger(log_dir, name="slm")
 
+    url = None
+    trainer = None
+    success = False
+    
     if launch_subprocesses:
         tb_process = subprocess.Popen(['tensorboard', '--logdir', log_dir, '--port', '6006'])
         ngrok.set_auth_token(ngrok_key)
         url = ngrok.connect(6006)
 
-    url = None
-    trainer = None
-    success = False
     try:
         print("Tensorboard URL:", url)
         config = json.load(open("config/"+config_name, "r"))
