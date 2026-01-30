@@ -85,7 +85,7 @@ def train_llm(model, ngrok_key, config_name='config.json', launch_subprocesses=T
         print("Creating dataloader...")
         dl = DataLoader(
             ds,
-            batch_size=8,
+            batch_size=4,
             pin_memory=True,
             persistent_workers=False,
             num_workers=0

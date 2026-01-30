@@ -30,8 +30,14 @@ class TransformerBaseline(nn.Module):
         """
         Expects x of shape B, context
         """
-        B, _ = x.shape
+        B, N = x.shape
         x = self.embedding(x)
+        # Convert mask to 4D causal attention mask (same as TinyRecursiveLM)
+        mask = mask[:, None, :, None].float()  # B, 1, N, 1
+        maskT = mask.transpose(-1, -2)  # B, 1, 1, N
+        mask = mask @ maskT  # B, 1, N, N - outer product handles padding
+        mask = torch.tril(mask)  # causal
+        mask = (mask != 1).bool()  # True = masked
         x = self.backbone(x, mask)
         x = self.final_norm(x)
         return self.lm_head(x)
