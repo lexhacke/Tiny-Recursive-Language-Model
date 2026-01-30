@@ -4,7 +4,7 @@ import json
 config = {  
     'norm_type': 'nGPT',
     "pad_idx":50256,
-    "lr":1e-4,
+    "lr":3e-3,
     "dim":384,
     "context":512,
     "vocab_size":50295,
