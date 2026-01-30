@@ -119,6 +119,8 @@ class Attention(nn.Module):
         else:
             scale = 1.0 / (self.head_dim ** 0.5)
 
+        if attn_mask is not None and attn_mask.dtype not in (torch.bool, torch.float32, torch.float16, torch.bfloat16):
+            attn_mask = attn_mask.bool()
         x = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, scale=scale)
         x = rearrange(x, "B h N d -> B N (h d)")
         x = self.proj(x)
