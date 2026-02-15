@@ -22,12 +22,19 @@ class TransformerBackbone(nn.Module):
             self.alpha_init_value = 0.05
             self.sqk_init_value = 1.0
 
+        rope_scaling = config.get('rope_scaling', 1.0)
         for _ in range(config['depth']):
             block = nn.Module()
             is_nGPT = self.norm_type == self.norm_map['nGPT']
             block.ln1 = RMSNorm(config['dim'], gated=not is_nGPT)
             block.ln2 = RMSNorm(config['dim'], gated=not is_nGPT)
-            block.attn = Attention(config['context'], config['dim'], n_heads=config['n_heads'], nGPT=is_nGPT)
+            block.attn = Attention(
+                config['context'],
+                config['dim'],
+                n_heads=config['n_heads'],
+                nGPT=is_nGPT,
+                rope_scaling=rope_scaling,
+            )
             block.mlp = MLPGeGLU(config['dim'], nGPT=is_nGPT)
             if self.norm_type == self.norm_map['prenorm']:
                 block.a_attn = nn.Parameter(torch.tensor(config['residual_alpha']).float(), requires_grad=config['learnable_alpha'])
@@ -70,7 +77,7 @@ class TransformerBackbone(nn.Module):
         return x
 
 class Attention(nn.Module):
-    def __init__(self, context_length, emb_dim, causal=True, n_heads=8, nGPT=False):
+    def __init__(self, context_length, emb_dim, causal=True, n_heads=8, nGPT=False, rope_scaling=1.0):
         super().__init__()
         self.causal = causal
         self.context_length = context_length
@@ -78,6 +85,7 @@ class Attention(nn.Module):
         self.n_heads = n_heads
         self.head_dim = emb_dim // n_heads
         self.nGPT = nGPT
+        self.rope_scaling = rope_scaling
         if nGPT:
             base_scale = 1.0 / (emb_dim ** 0.5)
             self.sqk_init_value = 1.0
@@ -85,7 +93,11 @@ class Attention(nn.Module):
             self.sqk = nn.Parameter(base_scale * torch.ones(emb_dim))
         self.qkv = nn.Linear(emb_dim, 3*emb_dim, bias=False)
         self.proj = nn.Linear(emb_dim, emb_dim, bias=False)
-        self.register_buffer("freq", generate_angles_1d(context_length, self.head_dim), persistent=False)
+        self.register_buffer(
+            "freq",
+            generate_angles_1d(context_length, self.head_dim, scaling_factor=self.rope_scaling),
+            persistent=False,
+        )
 
     def forward(self, x, attn_mask):
         """
@@ -119,8 +131,6 @@ class Attention(nn.Module):
         else:
             scale = 1.0 / (self.head_dim ** 0.5)
 
-        if attn_mask is not None and attn_mask.dtype not in (torch.bool, torch.float32, torch.float16, torch.bfloat16):
-            attn_mask = attn_mask.bool()
         x = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, scale=scale)
         x = rearrange(x, "B h N d -> B N (h d)")
         x = self.proj(x)

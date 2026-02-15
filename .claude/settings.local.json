@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -c:*)"
+      "Bash(python -c:*)",
+      "Bash(set PYTHONUTF8=1)",
+      "Bash(set:*)",
+      "Bash(python -m modal run:*)",
+      "Bash(chcp:*)",
+      "Bash(cmd /c \"chcp 65001 && cd c:\\\\Users\\\\lex\\\\Documents\\\\TinyRecursiveLanguageModel\\\\src && set PYTHONUTF8=1 && python -m modal run modal_train.py\")"
     ]
   }
 }

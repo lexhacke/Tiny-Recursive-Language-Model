@@ -7,3 +7,4 @@ tensorboard
 pyngrok
 dotenv
 matplotlib
+accelerate

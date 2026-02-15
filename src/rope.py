@@ -15,13 +15,13 @@ def generate_angles_2d(H,W,D, device='cpu', freq=None):
     freq_tensor = torch.einsum("ij,k->ijk", pos, freq) # outer product
     return freq_tensor
 
-def generate_angles_1d(N, D, device='cpu', freq=None):
+def generate_angles_1d(N, D, device='cpu', freq=None, scaling_factor=1.0):
     """
     1d variation of generate_angles_2d
     """
     assert D % 2 == 0, "Embedding Dimension must be even!"
     freq = torch.tensor([10000**(-2*i/D) for i in range(int(D/2))], device=device) if freq is None else freq
-    pos = torch.linspace(-1, 1, steps=N, device=device)
+    pos = torch.linspace(-scaling_factor, scaling_factor, steps=N, device=device)
     freq_tensor = torch.einsum("i,j->ij", pos, freq) # outer product
     return freq_tensor
 

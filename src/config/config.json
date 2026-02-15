@@ -1,14 +1,14 @@
 {
     "norm_type": "nGPT",
     "pad_idx": 50256,
-    "lr": 0.0001,
-    "dim": 384,
-    "context": 512,
+    "lr": 0.0002,
+    "dim": 768,
+    "context": 4096,
     "vocab_size": 50295,
     "n_heads": 8,
     "residual_alpha": 0,
     "learnable_alpha": true,
-    "depth": 4,
+    "depth": 12,
     "device": "cpu",
     "tokenizer": "microsoft/phi-1",
     "n": 3,
@@ -17,5 +17,12 @@
     "clip_graph": true,
     "threshold": 0.5,
     "exit_early": false,
-    "mask_tokens": false
+    "mask_tokens": false,
+    "optimizer": "adamw",
+    "batch_size": 4,
+    "wsd": {
+        "warmup_steps": 2000,
+        "min_lr_scale": 0.0,
+        "final_decay_ratio": 0.1
+    }
 }
