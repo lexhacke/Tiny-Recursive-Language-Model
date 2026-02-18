@@ -22,25 +22,30 @@ class LossModule(nn.Module):
         # Shift for next-token prediction
         token_gt = token_gt[:, 1:]
         token_logits = token_logits[:, :, :-1, :]
-        conf_logits = conf_logits[:, :, :-1, :]
 
         token_ids = token_logits.argmax(dim=-1) # Fake token targets
-        conf_gt = (token_ids == token_gt).float() # Fake confidence targets
-
-        conf_gt = rearrange(conf_gt, "... N -> (...) N")
-        conf_logits = rearrange(conf_logits.squeeze(-1), "... N -> (...) N")
-        token_gt = token_gt.expand(token_logits.shape[0], -1, -1)
+        if conf_logits is not None:
+            conf_logits = conf_logits[:, :, :-1, :]
+            conf_gt = (token_ids == token_gt).float() # Fake confidence targets
+            conf_gt = rearrange(conf_gt, "... N -> (...) N")
+            conf_logits = rearrange(conf_logits.squeeze(-1), "... N -> (...) N")
+            conf_loss = self.BCE(conf_logits, conf_gt)
+        else:
+            conf_loss = torch.tensor(0.0, device=token_logits.device)
+        T = token_logits.shape[0]
+        token_gt = token_gt.expand(T, -1, -1)
         token_gt = rearrange(token_gt, "... -> (...)")
         token_logits = rearrange(token_logits, "... D -> (...) D")
-        return self.BCE(conf_logits, conf_gt), self.CE(token_logits, token_gt)
+        return conf_loss, self.CE(token_logits, token_gt)
 
 if __name__ == "__main__":
     from trm import TinyRecursiveLM
+    from transformer_baseline import TransformerBaseline
     from transformers import AutoTokenizer
 
-    config = json.load(open("config/config.json", "r"))
+    config = json.load(open("src/config/config.json", "r"))
 
-    slm = TinyRecursiveLM(config).to(config['device'])
+    slm = TransformerBaseline(config).to(config['device'])
     tok = AutoTokenizer.from_pretrained(config['tokenizer'])
     
     if tok.pad_token is None:
@@ -59,6 +64,8 @@ if __name__ == "__main__":
                   )
     
     pred, conf, _ = slm(batch['input_ids'].to(config['device']), batch['attention_mask'].to(config['device']))
-    pred, conf = torch.stack(pred), torch.stack(conf)
+    pred = torch.stack(pred)
+    if conf is not None:
+        conf = torch.stack(conf)
     bce_loss, ce_loss = loss_module(pred, conf, batch['input_ids'].to(config['device']))
     print(f"BCE Loss: {bce_loss.item()}, CE Loss: {ce_loss.item()}")

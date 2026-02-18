@@ -1,6 +1,7 @@
 from torch import nn
 import torch
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 from rope import generate_angles_1d, apply_angles_1d
 from utils import RMSNorm
 from einops import rearrange
@@ -9,6 +10,8 @@ class TransformerBackbone(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.blocks = nn.ModuleList()
+        self.flash_attn = not config['mask_tokens']
+        self.use_checkpoint = config.get('activation_checkpointing', False)
         self.norm_map = {
             'prenorm': 1,
             'postnorm': 2,
@@ -34,6 +37,7 @@ class TransformerBackbone(nn.Module):
                 n_heads=config['n_heads'],
                 nGPT=is_nGPT,
                 rope_scaling=rope_scaling,
+                flash_attn=self.flash_attn,
             )
             block.mlp = MLPGeGLU(config['dim'], nGPT=is_nGPT)
             if self.norm_type == self.norm_map['prenorm']:
@@ -44,42 +48,55 @@ class TransformerBackbone(nn.Module):
                 block.a_mlp = nn.Parameter(self.base_scale * torch.ones(config['dim']))
             self.blocks.append(block)
 
+    def _run_prenorm(self, block, x, attn_mask):
+        x = x + block.attn(block.ln1(x), attn_mask) * block.a_attn
+        x = x + block.mlp(block.ln2(x)) * block.a_mlp
+        return x
+
+    def _run_postnorm(self, block, x, attn_mask):
+        x = block.ln1(x + block.attn(x, attn_mask))
+        x = block.ln2(x + block.mlp(x))
+        return x
+
+    def _run_ngpt(self, block, x, attn_mask):
+        lr = torch.abs(block.a_attn * (self.alpha_init_value / self.base_scale))
+        h_attn = block.attn(x, attn_mask)
+        x_norm = F.normalize(x, p=2, dim=-1)
+        h_attn_norm = F.normalize(h_attn, p=2, dim=-1)
+        x = F.normalize(x_norm + lr * (h_attn_norm - x_norm), p=2, dim=-1)
+
+        lr = torch.abs(block.a_mlp * (self.alpha_init_value / self.base_scale))
+        h_mlp = block.mlp(x)
+        x_norm = F.normalize(x, p=2, dim=-1)
+        h_mlp_norm = F.normalize(h_mlp, p=2, dim=-1)
+        x = F.normalize(x_norm + lr * (h_mlp_norm - x_norm), p=2, dim=-1)
+        return x
+
     def forward(self, x, attn_mask):
         if self.norm_type == self.norm_map['prenorm']:
-            for block in self.blocks:
-                x = x + block.attn(block.ln1(x), attn_mask) * block.a_attn
-                x = x + block.mlp(block.ln2(x)) * block.a_mlp
-        
+            fn = self._run_prenorm
         elif self.norm_type == self.norm_map['postnorm']:
-            for block in self.blocks:
-                x = block.ln1(x + block.attn(x, attn_mask))
-                x = block.ln2(x + block.mlp(x))
-        
+            fn = self._run_postnorm
         elif self.norm_type == self.norm_map['nGPT']:
-            for block in self.blocks:
-                # Attention update
-                lr = torch.abs(block.a_attn * (self.alpha_init_value / self.base_scale))
-                h_attn = block.attn(x, attn_mask)
-                x_norm = F.normalize(x, p=2, dim=-1)
-                h_attn_norm = F.normalize(h_attn, p=2, dim=-1)
-                x = F.normalize(x_norm + lr * (h_attn_norm - x_norm), p=2, dim=-1)
+            fn = self._run_ngpt
+        else:
+            return x
 
-                # MLP update
-                lr = torch.abs(block.a_mlp * (self.alpha_init_value / self.base_scale))
-                h_mlp = block.mlp(x)
-                x_norm = F.normalize(x, p=2, dim=-1)
-                h_mlp_norm = F.normalize(h_mlp, p=2, dim=-1)
-                x = F.normalize(x_norm + lr * (h_mlp_norm - x_norm), p=2, dim=-1)
-        
-        elif self.norm_type == self.norm_map['ortho']:
-            pass
-        
+        for block in self.blocks:
+            if self.use_checkpoint:
+                def block_runner(inp, mask, blk=block, func=fn):
+                    return func(blk, inp, mask)
+                x = checkpoint(block_runner, x, attn_mask, use_reentrant=False)
+            else:
+                x = fn(block, x, attn_mask)
+
         return x
 
 class Attention(nn.Module):
-    def __init__(self, context_length, emb_dim, causal=True, n_heads=8, nGPT=False, rope_scaling=1.0):
+    def __init__(self, context_length, emb_dim, causal=True, n_heads=8, nGPT=False, rope_scaling=1.0, flash_attn=False):
         super().__init__()
         self.causal = causal
+        self.flash_attn = flash_attn
         self.context_length = context_length
         self.emb_dim = emb_dim
         self.n_heads = n_heads
@@ -131,7 +148,11 @@ class Attention(nn.Module):
         else:
             scale = 1.0 / (self.head_dim ** 0.5)
 
-        x = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, scale=scale)
+        use_flash = self.flash_attn and attn_mask is None
+        if use_flash:
+            x = F.scaled_dot_product_attention(q, k, v, is_causal=True, scale=scale)
+        else:
+            x = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, scale=scale)
         x = rearrange(x, "B h N d -> B N (h d)")
         x = self.proj(x)
         return x
@@ -184,14 +205,15 @@ if __name__ == '__main__':
         'learnable_alpha':True,
         'attention':False,
         'depth':2,
-        'device':'cuda'
+        'device':'cpuu',
+        "mask_tokens":False
     }
 
     token_embedding = nn.Embedding(
         num_embeddings=config['vocab_size'],
         embedding_dim=config['dim'],
         padding_idx=0
-    ).cuda()
+    ).cpu()
 
     tokenizer = AutoTokenizer.from_pretrained("google/gemma-3-270m-it")
     tokenizer.padding_side = 'right'
@@ -203,11 +225,11 @@ if __name__ == '__main__':
                       truncation=True,
                       max_length=config['context'],
                       return_tensors='pt',
-                  ).to('cuda')
+                  ).to('cpu')
 
     embeddings = token_embedding(batch['input_ids'])
     print(embeddings.shape, batch['attention_mask'].shape)
-    block = TransformerBackbone(config).cuda()
+    block = TransformerBackbone(config).cpu()
     x = block(embeddings, batch['attention_mask'])
     assert x.isnan().sum() == False
     print(x)

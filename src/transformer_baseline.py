@@ -17,7 +17,7 @@ class TransformerBaseline(nn.Module):
         'context': int
         """
         super().__init__()
-        config['norm_type'] = "postnorm"
+        config = {**config, 'norm_type': "postnorm"}
         self.dim = config['dim']
         self.context = config['context']
         self.embedding = nn.Embedding(config['vocab_size'], config['dim'])
@@ -40,7 +40,7 @@ class TransformerBaseline(nn.Module):
         mask = (mask != 1).bool()  # True = masked
         x = self.backbone(x, mask)
         x = self.final_norm(x)
-        return self.lm_head(x)
+        return [self.lm_head(x)], None, None
 
 if __name__ == "__main__":
     from transformers import AutoTokenizer

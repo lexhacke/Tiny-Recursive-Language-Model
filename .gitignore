@@ -10,3 +10,4 @@ venv/
 *.pth
 trm_logs/
 .env
+src/checkpoints

@@ -77,7 +77,7 @@ class TinyRecursiveLM(nn.Module):
                 conf_mask = conf_mask * (proba < self.threshold).float() # shape B, context, 1
                 mask = mask | (conf_mask[:, None, :, :] == 0) # mask queries of confident predictions
 
-            if mask.all() and self.exit_early:
+            if mask is not None and mask.all() and self.exit_early:
                 break
 
             if self.clip_graph:
@@ -91,16 +91,20 @@ class TinyRecursiveLM(nn.Module):
         Expects x of shape B, context
 
         Returns:
-        preds = list[tensor of shape B, context, vocab_size] 
+        preds = list[tensor of shape B, context, vocab_size]
         conf = list[T, B, context, 1]
         """
         B, _ = x.shape
         device = x.device
-        mask = mask[:, None, :, None].float()
-        maskT = rearrange(mask, "B h N S -> B h S N")
-        mask = mask @ maskT
-        mask = torch.tril(mask)
-        mask = (mask != 1).bool()
+        needs_mask = self.mask_tokens or (mask.min() == 0)
+        if needs_mask:
+            mask = mask[:, None, :, None].float()
+            maskT = rearrange(mask, "B h N S -> B h S N")
+            mask = mask @ maskT
+            mask = torch.tril(mask)
+            mask = (mask != 1).bool()
+        else:
+            mask = None
         x = self.embedding(x)
         if y is None and z is None:
             y, z = trunc_normal_((2, B, self.context, self.dim),

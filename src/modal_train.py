@@ -34,7 +34,7 @@ vol = modal.Volume.from_name("training-vol", create_if_missing=True)
     gpu="H200",
     volumes={"/results": vol},
     secrets=[modal.Secret.from_name("wandb-secret"), modal.Secret.from_name("huggingface-secret")],
-    timeout=14400,
+    timeout=57600,
 )
 def train_remote(model: str = "trm", batch_size: int = 4, accumulate_grad_batches: int = 1):
     import sys
@@ -43,6 +43,8 @@ def train_remote(model: str = "trm", batch_size: int = 4, accumulate_grad_batche
     import torch
 
     torch.set_float32_matmul_precision("high")
+    os.environ.setdefault("CHECKPOINT_DIR", "/results/checkpoints")
+    os.makedirs(os.environ["CHECKPOINT_DIR"], exist_ok=True)
 
     from train import train_llm
 
@@ -55,6 +57,16 @@ def train_remote(model: str = "trm", batch_size: int = 4, accumulate_grad_batche
         dest = f"/results/{os.path.basename(pt_file)}"
         shutil.copy2(pt_file, dest)
         print(f"Saved {dest}")
+
+    ckpt_root = "/root/src/checkpoints"
+    if os.path.isdir(ckpt_root):
+        for ckpt in glob.glob(os.path.join(ckpt_root, "**", "*.ckpt"), recursive=True):
+            rel_dir = os.path.relpath(os.path.dirname(ckpt), ckpt_root)
+            dest_dir = os.path.join("/results", "checkpoints", rel_dir)
+            os.makedirs(dest_dir, exist_ok=True)
+            dest = os.path.join(dest_dir, os.path.basename(ckpt))
+            shutil.copy2(ckpt, dest)
+            print(f"Saved {dest}")
     vol.commit()
 
 

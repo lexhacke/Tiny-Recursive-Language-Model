@@ -4,6 +4,7 @@ TODO:
 """
 
 from lightning.pytorch import LightningModule, Trainer
+from lightning.pytorch.callbacks import ModelCheckpoint, Callback
 from torch.utils.data import DataLoader
 from lightning.pytorch.loggers import WandbLogger
 from losses import LossModule
@@ -11,7 +12,7 @@ from torch import nn
 from trm import TinyRecursiveLM
 from transformer_baseline import TransformerBaseline
 from einops import rearrange
-import torch, json, os
+import torch, json, os, math
 from dataset import create_dataset
 import torch.nn.functional as F
 
@@ -53,7 +54,8 @@ class LLMLightning(LightningModule):
 
     def training_step(self, batch, batch_idx):
         pred, conf, _ = self(batch)
-        pred, conf = torch.stack(pred), torch.stack(conf)
+        pred = torch.stack(pred)
+        conf = torch.stack(conf) if conf is not None else None
         bce_loss, ce_loss = self.loss(pred, conf, batch['input_ids'])
         loss = bce_loss + ce_loss
 
@@ -78,6 +80,15 @@ class LLMLightning(LightningModule):
         self.log("Confidence_BCE", bce_loss.detach(), on_step=True, on_epoch=True, prog_bar=True)
         self.log("Token_CCE", ce_loss.detach(), on_step=True, on_epoch=True, prog_bar=True)
         return loss
+
+    def validation_step(self, batch, batch_idx):
+        pred, conf, _ = self(batch)
+        pred = torch.stack(pred)
+        conf = torch.stack(conf) if conf is not None else None
+        bce_loss, ce_loss = self.loss(pred, conf, batch['input_ids'])
+        self.log("val_Confidence_BCE", bce_loss.detach(), on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
+        self.log("val_Token_CCE", ce_loss.detach(), on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
+        return bce_loss + ce_loss
 
     def configure_optimizers(self):
         wd = 0.0 if self.nGPT else 0.1
@@ -188,12 +199,30 @@ def train_llm(model, config_path=None, batch_size=None, accumulate_grad_batches=
         config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "config.json")
     config = json.load(open(config_path, "r"))
     config['device'] = 'cuda'
-    if config.get('context') != 4096:
-        raise ValueError("SmolLM3 regimen requires context length of 4096 tokens.")
     batch_size = batch_size or config.get('batch_size', 4)
 
     print("Creating model...")
     trm_lightning = LLMLightning(recursive=(model == 'trm'), config=config)
+
+    total_params = sum(p.numel() for p in trm_lightning.slm.parameters() if p.requires_grad)
+    emb_params = sum(p.numel() for n, p in trm_lightning.slm.named_parameters() if p.requires_grad and 'embedding' in n)
+    print(f"Total Parameter Count: {total_params / 1_000_000:.4f}M")
+    print(f"Non-embedding params: {(total_params - emb_params) / 1_000_000:.4f}M")
+
+    tokens_per_param = config.get('tokens_per_param', 20)
+    context = config['context']
+    effective_batch = batch_size * accumulate_grad_batches
+    tokens_per_step = context * effective_batch
+    target_tokens = tokens_per_param * total_params
+    total_steps = max(1, math.ceil(target_tokens / tokens_per_step))
+    config['max_steps'] = total_steps
+    config.setdefault('wsd', {})
+    config['wsd']['total_steps'] = total_steps
+    trm_lightning.current_max_steps = total_steps
+    print(f"[train] Target tokens: {target_tokens/1e9:.3f}B | Tokens/step: {tokens_per_step/1e3:.1f}K | Planned steps: {total_steps}")
+    checkpoint_batches = config.get('checkpoint_every_batches', 100)
+    val_interval = config.get('val_check_interval', 100)
+    print(f"[train] Checkpoint every {checkpoint_batches} batches (~{max(1, math.ceil(checkpoint_batches / (accumulate_grad_batches or 1)))} steps); validation every {val_interval} batches.")
 
     if 'curriculum' in config:
         print("[train] Curriculum config detected, but the current training pipeline always streams SlimPajama.")
@@ -210,22 +239,73 @@ def _train_single(trm_lightning, config, model, batch_size, accumulate_grad_batc
     single_schedule.setdefault('min_lr_scale', 0.0)
     trm_lightning.lr_schedule_cfg = single_schedule
     logger = WandbLogger(project="tiny-recursive-lm", name=model)
-    ds = create_dataset(config['context'], config['tokenizer'])
-    dl = DataLoader(ds, batch_size=batch_size, pin_memory=True, num_workers=0)
+    ckpt_base = os.environ.get("CHECKPOINT_DIR")
+    if ckpt_base:
+        ckpt_dir = os.path.join(ckpt_base, model)
+    else:
+        ckpt_dir = os.path.join("checkpoints", model)
+    os.makedirs(ckpt_dir, exist_ok=True)
+    val_fraction = config.get('val_fraction', 0.0)
+    split_seed = config.get('split_seed', 0)
+    checkpoint_batches = config.get('checkpoint_every_batches', 100)
+    ckpt_every_steps = max(1, math.ceil(checkpoint_batches / accumulate_grad_batches))
+    checkpoint_cb = ModelCheckpoint(
+        dirpath=ckpt_dir,
+        filename=f"{model}-step{{step}}",
+        save_top_k=-1,
+        every_n_train_steps=ckpt_every_steps,
+        save_on_train_epoch_end=False,
+        save_last=True,
+        verbose=True,
+    )
+    callbacks = [checkpoint_cb]
+    if os.environ.get("CHECKPOINT_DIR"):
+        try:
+            import modal
+            vol = modal.Volume.from_name("training-vol")
+            class VolumeCommitCallback(Callback):
+                def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+                    if trainer.global_step > 0 and trainer.global_step % ckpt_every_steps == 0:
+                        vol.commit()
+                        print(f"[modal] Volume committed at step {trainer.global_step}")
+            callbacks.append(VolumeCommitCallback())
+        except Exception:
+            pass
+    ds = create_dataset(
+        config['context'],
+        config['tokenizer'],
+        split="train",
+        val_fraction=val_fraction,
+        split_seed=split_seed,
+    )
+    dl = DataLoader(ds, batch_size=batch_size, pin_memory=True, num_workers=16)
+    val_dl = None
+    if val_fraction and val_fraction > 0:
+        ds_val = create_dataset(
+            config['context'],
+            config['tokenizer'],
+            split="val",
+            val_fraction=val_fraction,
+            split_seed=split_seed,
+        )
+        val_dl = DataLoader(ds_val, batch_size=batch_size, pin_memory=True, num_workers=16)
 
     trainer_kwargs = dict(
         max_epochs=1,
+        max_steps=trm_lightning.current_max_steps,
         accelerator="gpu",
         devices=1,
         precision="bf16-mixed",
         log_every_n_steps=5,
         logger=logger,
+        callbacks=callbacks,
+        val_check_interval=config.get('val_check_interval', 100),
     )
     if not use_muon:
         trainer_kwargs['accumulate_grad_batches'] = accumulate_grad_batches
 
     trainer = Trainer(**trainer_kwargs)
-    trainer.fit(trm_lightning, dl)
+    trainer.fit(trm_lightning, dl, val_dl)
     torch.save(trainer.model.slm.state_dict(), 'trm-checkpoint.pt')
     print("Training finished.")
 

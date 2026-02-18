@@ -1,5 +1,7 @@
-from datasets import load_dataset
+from datasets import load_dataset, IterableDataset
 from transformers import AutoTokenizer
+import torch
+import hashlib
 
 
 def create_dataset(
@@ -7,6 +9,9 @@ def create_dataset(
     tokenizer_name,
     mode="train",
     dataset_name="DKYoon/SlimPajama-6B",
+    split="train",
+    val_fraction=0.0,
+    split_seed=0,
 ):
     """
     Stream SlimPajama (or compatible) data and return tokenized samples.
@@ -17,15 +22,35 @@ def create_dataset(
     tokenizer.padding_side = "right"
     tokenizer.truncation_side = "right"
 
-    ds = load_dataset(dataset_name, streaming=True)[mode]
+    base_stream = load_dataset(dataset_name)[mode]
 
-    def tokenize(batch):
-        return tokenizer(
-            batch["text"],
-            truncation=True,
-            padding="max_length",
-            max_length=context_size,
-            return_tensors="pt",
-        )
+    stride = None
+    if val_fraction and val_fraction > 0:
+        stride = max(1, int(round(1.0 / val_fraction)))
 
-    return ds.map(tokenize, batched=True, remove_columns=["text"])
+    def generator():
+        for idx, sample in enumerate(base_stream):
+            if stride:
+                h = hashlib.blake2b(f"{idx}-{split_seed}".encode(), digest_size=4).digest()
+                bucket = int.from_bytes(h, "big")
+                is_val = (bucket % stride) == 0
+                if split == "val" and not is_val:
+                    continue
+                if split != "val" and is_val:
+                    continue
+            elif split == "val":
+                continue
+
+            encoded = tokenizer(
+                sample["text"],
+                truncation=True,
+                padding="max_length",
+                max_length=context_size,
+                return_tensors="pt",
+            )
+            yield {
+                "input_ids": encoded["input_ids"].squeeze(0),
+                "attention_mask": encoded["attention_mask"].squeeze(0),
+            }
+
+    return IterableDataset.from_generator(generator)
